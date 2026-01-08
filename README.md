@@ -2,12 +2,12 @@
 
 > *one more thing...* for repositories
 
-A GitHub CLI extension that applies your preferred repository settings from a config file. Stop clicking through repo settings manually—define them once, apply them everywhere.
+A GitHub CLI extension that applies your preferred repository settings from a config file. Stop clicking through repo settings manually -- define them once, apply them everywhere.
 
 ## Installation
 
 ```bash
-gh ext install claylo/gh-coda
+gh ext install lovelesslabs/gh-coda
 ```
 
 ### Dependencies
@@ -21,7 +21,7 @@ gh ext install claylo/gh-coda
 1. Create a config file:
 
 ```yaml
-# ~/.config/gh-coda/public.conf
+# .github/coda.yml (repo-level) or ~/.config/gh-coda/public.yml (user-level)
 auto_merge: true
 delete_branch_on_merge: true
 allow_squash_merge: true
@@ -32,6 +32,9 @@ dependabot_alerts: true
 ```
 
 2. Run it:
+
+> [!NOTE]
+> Make sure you have installed the extension! :smile:
 
 ```bash
 cd your-repo
@@ -47,7 +50,7 @@ gh coda [SUBCOMMAND] [OPTIONS]
 
 Subcommands:
   setup        Apply all settings from config (default)
-  init         Create a .gh-coda config file in current directory
+  init         Create a .github/coda.yml config file
   set-secrets  Sync secrets from 1Password to GitHub
   status       Show current repo settings vs. config
 
@@ -59,23 +62,25 @@ Options:
 
 ## Config Discovery
 
-gh-coda finds your config in this order:
+`gh-coda` finds your config in this order:
 
 1. `-c/--config` flag
 2. `GH_CODA_CONFIG` environment variable
-3. `.gh-coda` in current directory
-4. Walk up directory tree for `.gh-coda.private` or `.gh-coda.public` (based on repo visibility)
-5. `~/.config/gh-coda/private.conf` or `public.conf`
+3. `.github/coda.yml` or `.github/coda.yaml` in current directory
+4. Walk up directory tree for `.coda.private.yml` or `coda.private.yml` (based on repo visibility)
+5. `~/.config/gh-coda/private.yml` or `public.yml`
+
+Both `.yml` and `.yaml` extensions are supported. Visibility-specific configs support both dotted (`.coda.private.yml`) and non-dotted (`coda.private.yml`) naming, with dotted taking priority.
 
 This layered approach lets you have different defaults for:
-- **Personal repos** → `~/.config/gh-coda/private.conf`
-- **Open source projects** → `~/.config/gh-coda/public.conf`
-- **Work repos** → `/path/to/work/.gh-coda.private`
-- **Specific project** → `./project/.gh-coda`
+- **Personal repos** → `~/.config/gh-coda/private.yml`
+- **Open source projects** → `~/.config/gh-coda/public.yml`
+- **Work repos** → `/path/to/work/.coda.private.yml` or `coda.private.yml`
+- **Specific project** → `./project/.github/coda.yml`
 
 ## GitHub Token Scopes
 
-gh-coda uses the `gh` CLI, which authenticates via `gh auth login`. Different features require different token scopes:
+`gh-coda` uses the `gh` CLI, which authenticates via `gh auth login`. Different features require different token scopes:
 
 | Feature | Required Scope | Notes |
 |---------|---------------|-------|
@@ -142,7 +147,7 @@ gh auth login --scopes repo,security_events,admin:org
 
 ### Branch Protection & Rulesets
 
-GitHub offers two ways to protect branches: **Branch Protection Rules** (legacy) and **Repository Rulesets** (newer, more flexible). gh-coda supports both.
+GitHub offers two ways to protect branches: **Branch Protection Rules** (legacy) and **Repository Rulesets** (newer, more flexible). `gh-coda` supports both.
 
 | Feature | Branch Protection | Rulesets |
 |---------|------------------|----------|
@@ -270,7 +275,7 @@ pages:
 Sync secrets from 1Password to GitHub Actions:
 
 ```yaml
-# In your .gh-coda config
+# In your .github/coda.yml config
 secrets_tags: github-actions,deploy
 secrets_app: actions  # or: dependabot, codespaces
 ```
@@ -294,11 +299,11 @@ gh coda set-secrets --tags github-actions,release
 ## Examples
 
 ```bash
-# Initialize a new config with defaults
+# Initialize a new config with defaults (creates .github/coda.yml)
 gh coda init
 
 # Initialize from an existing config
-gh coda init -c ~/.config/gh-coda/public.conf
+gh coda init -c ~/.config/gh-coda/public.yml
 
 # Apply settings to current repo
 gh coda

@@ -46,7 +46,7 @@ gh-coda interacts with sensitive systems:
 
 **Best practices:**
 
-- Never commit `.gh-coda` files containing secrets
+- Never commit config files containing secrets
 - Use 1Password references instead of plaintext secrets
 - Review config files before sharing or committing
 
@@ -70,7 +70,7 @@ gh auth login --scopes repo,security_events,admin:org
 Config files may contain sensitive information. Ensure appropriate permissions:
 
 ```bash
-chmod 600 ~/.config/gh-coda/*.conf
+chmod 600 ~/.config/gh-coda/*.yml
 ```
 
 ## Known Security Considerations

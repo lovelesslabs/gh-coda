@@ -1,3 +1,5 @@
 --require spec_helper
 --format documentation
 --warning-as-failure
+--kcov
+--kcov-options "--clean --include-pattern=/lib"

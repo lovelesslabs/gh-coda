@@ -35,6 +35,10 @@ build:
 
 # Run tests
 test:
+    shellspec --no-kcov
+
+# Coverage
+cov:
     shellspec
 
 # Lint shell scripts
@@ -43,7 +47,7 @@ lint:
 
 # Run tests with verbose output
 test-verbose:
-    shellspec --format documentation
+    shellspec --no-kcov --format documentation
 
 # Check dependencies
 check-deps:
