@@ -1,13 +1,13 @@
 # gh-coda build recipes
-
 # Read version from VERSION file
+
 version := `cat VERSION`
 
 # Build the single-file gh-coda extension
 build:
     #!/usr/bin/env bash
     set -euo pipefail
-    VERSION="{{version}}"
+    VERSION="{{ version }}"
     {
       echo '#!/usr/bin/env bash'
       echo 'set -e'
@@ -35,7 +35,7 @@ build:
 
 # Run tests
 test:
-    shellspec --no-kcov
+    shellspec --no-kcov --format progress
 
 # Coverage
 cov:
@@ -70,7 +70,7 @@ clean:
 
 # Show current version
 show-version:
-    @echo "{{version}}"
+    @echo "{{ version }}"
 
 # Verify conventional commits (useful before bump)
 check-commits:
@@ -81,6 +81,7 @@ bump-dry-run:
     cog bump --auto --dry-run
 
 # Bump version using conventional commits (auto-calculates from commit history)
+
 # Use: just release (auto) or just release --minor (force minor bump)
 release *args:
-    cog bump {{args}}
+    cog bump {{ args }}

@@ -1,3 +1,4 @@
+--shell bash
 --require spec_helper
 --format documentation
 --warning-as-failure
