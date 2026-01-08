@@ -27,7 +27,7 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
       - name: Run tests
-        run: ~/.local/lib/shellspec/shellspec
+        run: ~/.local/lib/shellspec/shellspec --no-kcov
 
       - name: Build
         run: just build
@@ -49,7 +49,7 @@ jobs:
             ## Installation
 
             ```bash
-            gh ext install claylo/gh-coda
+            gh ext install lovelesslabs/gh-coda
             ```
 
             Or download the `gh-coda` script and place it in your PATH.
