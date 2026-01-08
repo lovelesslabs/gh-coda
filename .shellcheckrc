@@ -1,0 +1,13 @@
+# ShellCheck configuration
+# https://www.shellcheck.net/wiki/
+
+# Default shell dialect
+shell=bash
+
+# Enable all optional checks
+enable=all
+
+# Exceptions:
+# SC2250: Prefer putting braces around variable references - too noisy for simple cases
+# SC2312: Consider invoking separately to avoid masking exit codes - acceptable for logging
+disable=SC2250,SC2312

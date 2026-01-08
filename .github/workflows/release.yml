@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: |
+          # Install yj
+          curl -sL https://github.com/sclevine/yj/releases/download/v5.1.0/yj-linux-amd64 -o /usr/local/bin/yj
+          chmod +x /usr/local/bin/yj
+
+          # Install shellspec
+          curl -fsSL https://git.io/shellspec | sh -s -- --yes
+
+          # Install just
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+      - name: Run tests
+        run: ~/.local/lib/shellspec/shellspec
+
+      - name: Build
+        run: just build
+
+      - name: Verify build
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Building release v$VERSION"
+          ./gh-coda --version
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: gh-coda
+          generate_release_notes: true
+          append_body: true
+          body: |
+
+            ## Installation
+
+            ```bash
+            gh ext install claylo/gh-coda
+            ```
+
+            Or download the `gh-coda` script and place it in your PATH.

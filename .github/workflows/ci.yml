@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: |
+          # Install yj (YAML to JSON)
+          curl -sL https://github.com/sclevine/yj/releases/download/v5.1.0/yj-linux-amd64 -o /usr/local/bin/yj
+          chmod +x /usr/local/bin/yj
+
+          # Install shellspec
+          curl -fsSL https://git.io/shellspec | sh -s -- --yes
+
+      - name: Run tests
+        run: ~/.local/lib/shellspec/shellspec
+
+      - name: Build
+        run: |
+          # Install just
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+          just build
+
+      - name: Verify build
+        run: |
+          ./gh-coda --version
+          ./gh-coda --help
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@2
+        with:
+          scandir: './lib'
+          severity: warning
+
+  commits:
+    name: Conventional Commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check conventional commits
+        uses: cocogitto/cocogitto-action@v4
+        with:
+          check-latest-tag-only: true

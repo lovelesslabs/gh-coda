@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Discussion
+    url: https://github.com/claylo/gh-coda/discussions
+    about: Ask questions, share configs, or discuss ideas before opening an issue
