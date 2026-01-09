@@ -6,11 +6,30 @@ runs:
     - name: Install just
       uses: extractions/setup-just@v3
 
-    - name: Install cog (cocogitto)
-      uses: cocogitto/cocogitto-action@v4
-      with:
-        git-user: ${{ env.GITHUB_BOT_USERNAME }}
-        git-user-email: ${{ env.GITHUB_BOT_EMAIL }}
+#     - name: Install cog (cocogitto)
+#       uses: cocogitto/cocogitto-action@v4
+#       with:
+#         git-user: ${{ env.GITHUB_BOT_USERNAME }}
+#         git-user-email: ${{ env.GITHUB_BOT_EMAIL }}
+
+    - name: Install cocogitto
+      shell: bash
+      run: |
+        set -euo pipefail
+        BIN_DIR="$HOME/.local/bin"
+        CUR_DIR=$(pwd)
+        VERSION=6.5.0
+        mkdir -p "$BIN_DIR"
+        if command -v cog >/dev/null 2>&1; then exit 0; fi
+        PLATFORM="unknown-linux-musl"
+        ARCH="x86_64"
+        TAR="cocogitto-$VERSION-$ARCH-$PLATFORM.tar.gz"
+        echo "Downloading cocogitto version $VERSION for $ARCH-$PLATFORM from https://github.com/cocogitto/cocogitto/releases/download/$VERSION/$TAR"
+        cd "$BIN_DIR" || exit
+        curl -OL https://github.com/cocogitto/cocogitto/releases/download/"$VERSION"/"$TAR"
+        tar --strip-components=1 -xzf $TAR "$ARCH-$PLATFORM/cog"
+        cd "$CUR_DIR" || exit
+        cog --version
 
     - name: Install yj
       shell: bash
