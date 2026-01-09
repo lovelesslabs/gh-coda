@@ -64,12 +64,11 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
+      - name: GitHub Actions Bot Setup
+        uses: ./.github/actions/bot-setup
 
       - name: Bootstrap tools
         uses: ./.github/actions/bootstrap-tools
-
-      - name: GitHub Actions Bot Setup
-        uses: ./.github/actions/bot-setup
 
       - name: Bump version (if releasable commits exist)
         run: |
