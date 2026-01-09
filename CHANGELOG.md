@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file. See [conven
 ## [v0.1.0](https://github.com/lovelesslabs/gh-coda/compare/cc7cfbd7376c620ac36ace0c74385105e1168508..v0.1.0) - 2026-01-09
 #### Features
 - add gh-coda GitHub CLI extension - ([3d04e3e](https://github.com/lovelesslabs/gh-coda/commit/3d04e3e50c12dd3dc02e1d1e21498dc58110059a)) - Clay Loveless
+#### Documentation
+- expand README with more details about 1Password integration (#6) - ([0f75314](https://github.com/lovelesslabs/gh-coda/commit/0f753144b26c7d7f03569727682880a357e82e8c)) - Clay Loveless
+
+- - -
+
+## [v0.1.0](https://github.com/lovelesslabs/gh-coda/compare/cc7cfbd7376c620ac36ace0c74385105e1168508..v0.1.0) - 2026-01-09
+#### Features
+- add gh-coda GitHub CLI extension - ([3d04e3e](https://github.com/lovelesslabs/gh-coda/commit/3d04e3e50c12dd3dc02e1d1e21498dc58110059a)) - Clay Loveless
 
 - - -
 
