@@ -12,22 +12,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install dependencies
-        run: |
-          # Install yj (YAML to JSON)
-          curl -sL https://github.com/sclevine/yj/releases/download/v5.1.0/yj-linux-amd64 -o /usr/local/bin/yj
-          chmod +x /usr/local/bin/yj
-
-          # Install shellspec
-          curl -fsSL https://git.io/shellspec | sh -s -- --yes
+      - name: Bootstrap tools
+        uses: ./.github/actions/bootstrap-tools
 
       - name: Run tests
+        shell: bash
         run: ~/.local/lib/shellspec/shellspec --no-kcov
 
       - name: Build
+        shell: bash
         run: |
-          # Install just
-          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
           just build
 
       - name: Verify build
@@ -58,3 +52,30 @@ jobs:
         uses: cocogitto/cocogitto-action@v4
         with:
           command: check
+
+  release:
+    name: Auto Release
+    needs: [test, shellcheck, commits] # only after all tests pass
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Bootstrap tools
+        uses: ./.github/actions/bootstrap-tools
+
+      - name: GitHub Actions Bot Setup
+        uses: ./.github/actions/bot-setup
+
+      - name: Bump version (if releasable commits exist)
+        run: |
+          if cog bump --auto --dry-run 2>/dev/null; then
+            echo "Releasable commits found, bumping..."
+            cog bump --auto --skip-ci
+          else
+            echo "No releasable commits since last tag, skipping release"
+          fi
