@@ -272,29 +272,178 @@ pages:
 
 ## 1Password Integration
 
-Sync secrets from 1Password to GitHub Actions:
+Sync secrets from 1Password to GitHub Actions, Dependabot, or Codespaces.
+
+### Prerequisites
+
+- [1Password CLI](https://developer.1password.com/docs/cli/) installed and signed in (`op signin`)
+- 1Password items tagged for GitHub sync
+
+### Config Options
 
 ```yaml
-# In your .github/coda.yml config
-secrets_tags: github-actions,deploy
-secrets_app: actions  # or: dependabot, codespaces
+# .github/coda.yml
+secrets_tags: github-actions,deploy    # Comma-separated 1Password tags
+secrets_app: actions                   # Target: actions, dependabot, or codespaces
 ```
 
-Then run:
+| Config Key | Description | Default |
+|------------|-------------|---------|
+| `secrets_tags` | Comma-separated tags to find 1Password items | (required) |
+| `secrets_app` | GitHub secret type: `actions`, `dependabot`, `codespaces` | `actions` |
+
+### CLI Options
+
+```bash
+gh coda set-secrets [OPTIONS] [NAME]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--tags TAG,TAG` | Override config's `secrets_tags` |
+| `--app TYPE` | Override config's `secrets_app` |
+| `--vault NAME` | Limit search to specific 1Password vault |
+| `--field LABEL` | Force extraction from specific field (bypasses auto-detection) |
+| `--repo OWNER/REPO` | Target specific repository |
+| `--dry-run` | Show what would be set without making changes |
+| `--verbose` | Show detailed progress |
+| `NAME` | Sync only the item with this exact title |
+
+### 1Password Item Setup
+
+Tag your 1Password items (e.g., `github-actions`) so `gh-coda` can find them.
+
+#### Field Priority
+
+When extracting the secret value, `gh-coda` checks fields in this order:
+
+1. Field labeled `credential`
+2. Field labeled `password`
+3. Field labeled `token`
+4. Any field with `purpose: PASSWORD`
+5. Any field with `type: CONCEALED`
+6. First available field
+
+Use `--field LABEL` to bypass this and force a specific field.
+
+#### Secret Name Derivation
+
+The GitHub secret name is derived from the 1Password item title:
+
+| Item Title | GitHub Secret Name |
+|------------|-------------------|
+| `GitHub Token` | `GITHUB_TOKEN` |
+| `NPM_Publish-Key` | `NPM_PUBLISH_KEY` |
+| `my.api" key!` | `MY_API_KEY` |
+
+Rules: uppercase, non-alphanumeric characters become `_`, consecutive `_` collapsed.
+
+#### Overriding the Secret Name
+
+Add a field labeled `gh_secret_name` to your 1Password item to override the derived name:
+
+```
+Title: My Deploy Credentials
+Fields:
+  - label: password
+    value: super-secret-token
+  - label: gh_secret_name        # ← override
+    value: DEPLOY_TOKEN
+```
+
+This sets the secret as `DEPLOY_TOKEN` instead of `MY_DEPLOY_CREDENTIALS`.
+
+### Examples
+
+```bash
+# Preview what would be synced (recommended first step)
+gh coda set-secrets --dry-run --verbose
+
+# Sync all items tagged 'github-actions'
+gh coda set-secrets --tags github-actions
+
+# Sync a single item by name
+gh coda set-secrets --tags github-actions "NPM Token"
+
+# Sync from a specific vault
+gh coda set-secrets --tags deploy --vault "Work Secrets"
+
+# Force extraction from a non-standard field
+gh coda set-secrets --tags ci --field api_key
+
+# Sync to Dependabot secrets instead of Actions
+gh coda set-secrets --tags github-actions --app dependabot
+
+# Sync to a different repo
+gh coda set-secrets --tags github-actions --repo myorg/other-repo
+```
+
+### Config Examples
+
+**GitHub Actions secrets (default):**
+```yaml
+secrets_tags: github-actions
+secrets_app: actions
+```
+
+**Dependabot secrets** (for private registry auth):
+```yaml
+secrets_tags: dependabot-registries
+secrets_app: dependabot
+```
+
+**Codespaces secrets:**
+```yaml
+secrets_tags: codespaces-dev
+secrets_app: codespaces
+```
+
+**Multiple tags** (union of all matching items):
+```yaml
+secrets_tags: ci,deploy,github-actions
+```
+
+### Automatic Sync During Setup
+
+If `secrets_tags` is set in your config, `gh coda setup` automatically runs `set-secrets`:
+
+```bash
+gh coda  # runs setup, including secrets sync
+```
+
+To sync secrets independently:
+
 ```bash
 gh coda set-secrets
 ```
 
-Or specify tags directly:
-```bash
-gh coda set-secrets --tags github-actions,release
-```
+### gh-coda vs 1Password GitHub Action
 
-### How it works
+1Password also offers a [Load Secrets Action](https://github.com/marketplace/actions/load-secrets-from-1password) that fetches secrets at runtime. Here's how they compare:
 
-1. Finds 1Password items with the specified tags
-2. Extracts the secret value (looks for fields: `credential`, `password`, `token`, or first concealed field)
-3. Sets it as a GitHub secret (name derived from item title, or override with `gh_secret_name` field)
+| Aspect | 1Password Action | gh-coda set-secrets |
+|--------|-----------------|---------------------|
+| **When** | Runtime (every workflow run) | Pre-deployment (one-time sync) |
+| **Where secrets live** | Always in 1Password | Copied to GitHub Secrets |
+| **Auth required** | Service Account token in every repo | Local `op` CLI, run once |
+| **Workflow syntax** | `op://vault/item/field` | `${{ secrets.NAME }}` |
+| **1Password dependency** | Required for every CI run | Only at sync time |
+| **Secret rotation** | Automatic (next run gets new value) | Manual re-sync needed |
+| **Failure mode** | 1Password down = workflows fail | Workflows independent after sync |
+
+**Use the 1Password Action when:**
+- You want 1Password as the single source of truth
+- You rotate secrets frequently and want automatic pickup
+- You have Service Account infrastructure set up
+
+**Use gh-coda when:**
+- You want standard GitHub `${{ secrets.X }}` syntax in workflows
+- You don't want CI runs dependent on external services
+- You sync secrets occasionally rather than every run
+- You prefer local tooling over service accounts
+- You're already using gh-coda for repo settings
+
+These approaches aren't mutually exclusive. Some teams use runtime resolution for production secrets (frequent rotation) and pre-sync for CI tokens (rarely change).
 
 ## Examples
 

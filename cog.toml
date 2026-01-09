@@ -69,7 +69,7 @@ pre_bump_hooks = [
 # Post-bump hooks run after the tag is created
 post_bump_hooks = [
     "git push",
-    "git push origin {{version}}",
+    "git push origin v{{version}}",
 ]
 
 [changelog]
