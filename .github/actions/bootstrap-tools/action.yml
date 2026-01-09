@@ -9,7 +9,8 @@ runs:
     - name: Install cog (cocogitto)
       uses: cocogitto/cocogitto-action@v4
       with:
-        install-only: true
+        git-user: ${{ env.GITHUB_BOT_USERNAME }}
+        git-user-email: ${{ env.GITHUB_BOT_EMAIL }}
 
     - name: Install yj
       shell: bash
