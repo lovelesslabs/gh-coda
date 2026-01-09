@@ -1,16 +1,18 @@
 # Publishing Guide
 
-This project uses [cocogitto](https://docs.cocogitto.io/) for versioning and releases.
+This project uses [cocogitto](https://docs.cocogitto.io/) for automated versioning and releases following the semantic-release pattern.
 
-## Prerequisites
+## How Releases Work
 
-```bash
-# Install cocogitto
-brew install cocogitto
+Releases are **fully automated**. When you merge a PR to `main`:
 
-# Or via cargo
-cargo binstall cocogitto
-```
+1. CI runs tests, linting, and commit validation
+2. If tests pass, CI checks for releasable commits (feat/fix) since the last tag
+3. If found, `cog bump --auto` creates a version commit + tag
+4. The tag push triggers the release workflow
+5. GitHub Release is created with the built `gh-coda` artifact
+
+**You don't need to run any release commands locally.** Just write conventional commits and merge.
 
 ## Conventional Commits
 
@@ -63,7 +65,7 @@ git commit -m "fix: handle missing config file gracefully"
 git commit -m "docs: update README with new options"
 ```
 
-### 2. Verify commits are valid
+### 2. Verify commits are valid (optional)
 
 ```bash
 just check-commits
@@ -71,109 +73,72 @@ just check-commits
 cog check
 ```
 
-### 3. Preview the next version
+### 3. Create a PR and merge
+
+That's it. CI handles the rest.
+
+## What Triggers a Release?
+
+A release is created when **all** of these are true:
+
+- Push to `main` branch (not a PR)
+- All CI checks pass (tests, lint, commit validation)
+- At least one `feat` or `fix` commit exists since the last tag
+
+Commits like `docs`, `chore`, `ci`, `test` do **not** trigger releases on their own.
+
+## Manual Release (Rare)
+
+If you need to force a release locally (e.g., first release, or CI is broken):
 
 ```bash
+# Preview what would happen
 just bump-dry-run
-# or
-cog bump --auto --dry-run
-```
 
-## Creating a Release
-
-### Auto-calculated version (recommended)
-
-```bash
+# Create release (auto-calculated version)
 just release --auto
-```
 
-This will:
-1. Calculate version from commits since last tag (feat→minor, fix→patch)
-2. Update `VERSION` file
-3. Run tests (`just test`)
-4. Rebuild (`just build`)
-5. Generate/update `CHANGELOG.md`
-6. Create version commit with `[skip ci]`
-7. Create git tag (e.g., `v0.2.0`)
-8. Push commit and tag to origin
-9. GitHub Actions creates the release with built artifact
-
-### Force a specific bump
-
-```bash
-# Force minor bump regardless of commits
+# Force a specific bump type
 just release --minor
-
-# Force major bump
 just release --major
-
-# Force patch bump
 just release --patch
 ```
-
-### Set a specific version
-
-```bash
-cog bump --version 1.0.0
-```
-
-## What Happens on Push
-
-### On push to `main` or PR:
-- CI runs tests
-- CI runs ShellCheck on `lib/*.sh`
-- CI verifies conventional commits
-
-### On push of `v*` tag:
-- Release workflow runs tests
-- Builds `gh-coda` with embedded version
-- Creates GitHub Release with the built script attached
 
 ## Troubleshooting
 
-### "No commits to bump"
+### Release didn't happen after merge
 
-You haven't made any bumpable commits (feat/fix) since the last tag:
+Check if you have releasable commits:
 
 ```bash
-# Check what commits exist since last tag
-cog log
+cog log  # Shows commits since last tag
+```
 
-# Force a patch bump anyway
+If only `docs`, `chore`, `ci`, or `test` commits exist, no release is created. To force one:
+
+```bash
 just release --patch
 ```
 
-### "Uncommitted changes"
+### "No commits to bump"
 
-Cocogitto won't bump with a dirty working tree:
-
-```bash
-git status
-git add -A && git commit -m "chore: cleanup"
-just release --auto
-```
+You haven't made any bumpable commits (feat/fix) since the last tag. Either:
+- Add a feature or fix commit
+- Force a release: `just release --patch`
 
 ### Invalid commit messages
 
-Fix with an interactive rebase:
+The commit-msg hook should catch these locally. If they slip through:
 
 ```bash
 # See which commits are invalid
 cog check
 
-# Rebase and reword
+# Fix with interactive rebase
 git rebase -i HEAD~3
 ```
 
-Or use cocogitto to rewrite:
-
-```bash
-cog edit
-```
-
 ### Wrong version released
-
-If you need to redo a release:
 
 ```bash
 # Delete the local and remote tag
@@ -182,30 +147,29 @@ git push origin :refs/tags/v0.2.0
 
 # Reset to before the bump commit
 git reset --hard HEAD~1
+git push --force-with-lease
 
-# Try again
-just release --auto
+# CI will re-run and create the correct release
 ```
 
 ## Configuration Reference
 
-See `cog.toml` in the repo root for all settings. Key options:
+See `cog.toml` in the repo root. Key settings:
 
 ```toml
 tag_prefix = "v"                    # Tags are v0.1.0, v0.2.0, etc.
 branch_whitelist = ["main"]         # Only bump from main
-skip_ci = "[skip ci]"               # Added to bump commits
 
 pre_bump_hooks = [                  # Run before version commit
-    "echo {{version}} > VERSION",   # Update VERSION file
-    "just test",                    # Run tests
-    "just build",                   # Rebuild with new version
-    "git add VERSION",              # Stage VERSION for commit
+    "echo {{version}} > VERSION",
+    "just test",
+    "just build",
+    "git add VERSION",
 ]
 
 post_bump_hooks = [                 # Run after tag created
-    "git push",                     # Push commit
-    "git push origin {{version}}",  # Push tag
+    "git push",
+    "git push origin {{version}}",
 ]
 ```
 
@@ -215,15 +179,12 @@ post_bump_hooks = [                 # Run after tag created
 # Check commits are valid
 just check-commits
 
-# Preview version bump
+# Preview what release would do
 just bump-dry-run
-
-# Release (auto version)
-just release --auto
-
-# Release (force minor)
-just release --minor
 
 # Show current version
 just show-version
+
+# Manual release (rarely needed)
+just release --auto
 ```

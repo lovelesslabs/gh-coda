@@ -8,7 +8,7 @@ build:
     #!/usr/bin/env bash
     set -euo pipefail
     VERSION="{{ version }}"
-    {
+    (
       echo '#!/usr/bin/env bash'
       echo 'set -e'
       echo ''
@@ -29,7 +29,7 @@ build:
       cat lib/commands.sh | sed "s/@@VERSION@@/$VERSION/g"
       echo ''
       echo 'main "$@"'
-    } > gh-coda
+    ) > gh-coda
     chmod +x gh-coda
     echo "built: gh-coda v$VERSION"
 

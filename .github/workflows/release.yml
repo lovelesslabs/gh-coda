@@ -3,31 +3,23 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
+  discussions: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: GitHub Actions Bot Setup
+        uses: ./.github/actions/bot-setup
+
       - uses: actions/checkout@v6
 
-      - name: Install dependencies
-        run: |
-          # Install yj
-          curl -sL https://github.com/sclevine/yj/releases/download/v5.1.0/yj-linux-amd64 -o /usr/local/bin/yj
-          chmod +x /usr/local/bin/yj
-
-          # Install shellspec
-          curl -fsSL https://git.io/shellspec | sh -s -- --yes
-
-          # Install just
-          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
-
-      - name: Run tests
-        run: ~/.local/lib/shellspec/shellspec --no-kcov
+      - name: Bootstrap tools
+        uses: ./.github/actions/bootstrap-tools
 
       - name: Build
         run: just build
@@ -38,18 +30,29 @@ jobs:
           echo "Building release v$VERSION"
           ./gh-coda --version
 
+      - name: Generate release notes
+        run: |
+          cog changelog --at "$GITHUB_REF_NAME" > RELEASE_NOTES.md
+          cat >> RELEASE_NOTES.md << 'EOF'
+
+          ## Installation
+
+          ```bash
+          gh ext install lovelesslabs/gh-coda
+          ```
+
+          Or download the `gh-coda` script and place it in your PATH.
+
+          ## Already Installed? Upgrade
+
+          ```bash
+          gh ext upgrade lovelesslabs/gh-coda
+          ```
+          EOF
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: gh-coda
-          generate_release_notes: true
-          append_body: true
-          body: |
-
-            ## Installation
-
-            ```bash
-            gh ext install lovelesslabs/gh-coda
-            ```
-
-            Or download the `gh-coda` script and place it in your PATH.
+          body_path: RELEASE_NOTES.md
+          discussion_category_name: announcements

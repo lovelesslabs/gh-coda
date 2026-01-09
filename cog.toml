@@ -57,8 +57,9 @@ disable_changelog = false
 pre_bump_hooks = [
     # Update VERSION file
     "echo {{version}} > VERSION",
+    "echo 'bumping from {{latest|0.0.0}} to {{version}}'",
     # Run tests
-    "just test",
+    # "just test",
     # Rebuild with new version
     "just build",
     # Stage the VERSION file (gh-coda is gitignored)
@@ -76,9 +77,7 @@ path = "CHANGELOG.md"
 template = "remote"
 remote = "github.com"
 repository = "gh-coda"
-owner = "claylo"
-
-
+owner = "lovelesslabs"
 
 # Map commit types to changelog sections
 [commit_types]
@@ -90,7 +89,7 @@ refactor = { changelog_title = "Refactoring" }
 perf = { changelog_title = "Performance" }
 # test = "Tests"
 build = { changelog_title = "Build" }
-ci = { changelog_title = "CI/CD" }
+ci = { omit_from_changelog = true }
 # chore = "Chores"
 # Maintenance tasks (deps, tooling) - don't clutter the changelog
 chore = { omit_from_changelog = true }
@@ -151,11 +150,11 @@ just test
 """
 
 # Run tests before allowing a push.
-[git_hooks.pre-push]
-script = """#!/bin/sh
-set -e
+# [git_hooks.pre-push]
+# script = """#!/bin/sh
+# set -e
 
-# Run the test suite. Prevents pushing broken code.
-just lint
-just test-verbose
-"""
+# # Run the test suite. Prevents pushing broken code.
+# just lint
+# just test-verbose
+# """

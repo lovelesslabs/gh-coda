@@ -1,0 +1,30 @@
+name: bootstrap-tools
+description: Install CI helper tools
+runs:
+  using: composite
+  steps:
+    - name: Install just
+      uses: extractions/setup-just@v3
+
+    - name: Install cog (cocogitto)
+      uses: cocogitto/cocogitto-action@v4
+      with:
+        install-only: true
+
+    - name: Install yj
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/.local/bin"
+        if command -v yj >/dev/null 2>&1; then exit 0; fi
+        curl -sL https://github.com/sclevine/yj/releases/download/v5.1.0/yj-linux-amd64 -o "$HOME/.local/bin/yj" && chmod +x "$HOME/.local/bin/yj"
+
+    - name: Install ShellSpec
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v shellspec >/dev/null 2>&1; then exit 0; fi
+        mkdir -p "$HOME/.local/bin"
+        # shellspec's recommended installer is curl|sh
+        curl -fsSL https://git.io/shellspec | sh -s -- --yes --prefix "$HOME/.local"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
