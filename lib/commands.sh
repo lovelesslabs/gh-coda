@@ -7,7 +7,7 @@ VERSION="@@VERSION@@"
 
 # Default config template
 DEFAULT_CONFIG='# gh-coda config
-# See: https://github.com/claylo/gh-coda
+# See: https://github.com/lovelesslabs/gh-coda
 
 # Merge settings
 auto_merge: true
