@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.1.1](https://github.com/lovelesslabs/gh-coda/compare/b0a8240d1999689c846d4b62b06d3eeb89bb4de0..v0.1.1) - 2026-01-11
+#### Bug Fixes
+- include built script in repo for gh ext install (#9) - ([eb632ce](https://github.com/lovelesslabs/gh-coda/commit/eb632cee373c11d84a6c2dbea5eb658beabcd2f4)) - Clay Loveless
+
+- - -
+
 ## [v0.1.0](https://github.com/lovelesslabs/gh-coda/compare/cc7cfbd7376c620ac36ace0c74385105e1168508..v0.1.0) - 2026-01-09
 #### Features
 - add gh-coda GitHub CLI extension - ([3d04e3e](https://github.com/lovelesslabs/gh-coda/commit/3d04e3e50c12dd3dc02e1d1e21498dc58110059a)) - Clay Loveless

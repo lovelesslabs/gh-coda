@@ -1,0 +1,970 @@
+#!/usr/bin/env bash
+set -e
+
+# gh-coda - built from lib/*.sh
+# Version: 0.1.1
+# Do not edit directly; modify lib/*.sh and run: just build
+
+# helpers.sh - Basic utility functions
+
+log() { printf '%s\n' "$*" >&2; }
+die() { log "error: $*"; exit 1; }
+need_cmd() { command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1"; }
+
+# repo.sh - Repository resolution and info
+
+# Returns repo as "OWNER/REPO" on stdout
+# Returns non-zero if it cannot determine
+resolve_repo() {
+  if [[ -n "${GH_REPO:-}" ]]; then
+    printf '%s\n' "$GH_REPO"
+    return 0
+  fi
+
+  local out rc
+  out="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>&1)" || rc=$?
+  rc="${rc:-0}"
+
+  if (( rc == 0 )); then
+    printf '%s\n' "$out"
+    return 0
+  fi
+
+  if [[ "$out" == *"fatal: not a git repository"* ]]; then
+    die "not in a git repo (and GH_REPO not set)"
+  fi
+
+  if [[ "$out" == *"no git remotes found"* ]]; then
+    die "git repo has no remotes; push/add a GitHub remote or set GH_REPO"
+  fi
+
+  die "failed to resolve repo (gh rc=$rc): $out"
+}
+
+# Returns "private" or "public"
+get_repo_visibility() {
+  local repo="${1:-}"
+  [[ -n "$repo" ]] || repo="$(resolve_repo)"
+  gh repo view "$repo" --json isPrivate -q 'if .isPrivate then "private" else "public" end'
+}
+
+# config.sh - Config discovery and loading
+
+# Global: CONFIG_JSON is set by load_config() and used by other modules
+CONFIG_JSON=""
+
+# find_config [OPTIONS]
+#
+# Finds and outputs the path to the config file.
+# Priority:
+#   1. -c/--config <path>
+#   2. GH_CODA_CONFIG env var
+#   3. $PWD/.github/coda.yml or coda.yaml (repo-level config)
+#   4. Walk up from $PWD for [.]coda.private.yml/yaml or [.]coda.public.yml/yaml
+#   5. ~/.config/gh-coda/private.yml/yaml or public.yml/yaml
+#
+# Returns 0 and prints path if found, returns 1 if no config found.
+find_config() {
+  local config_path="" visibility=""
+
+  # Parse args for -c/--config
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -c|--config)
+        config_path="${2:-}"
+        shift 2 || die "-c/--config requires an argument"
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  # Priority 1: -c/--config flag
+  if [[ -n "$config_path" ]]; then
+    if [[ -f "$config_path" ]]; then
+      printf '%s\n' "$config_path"
+      return 0
+    else
+      die "config file not found: $config_path"
+    fi
+  fi
+
+  # Priority 2: GH_CODA_CONFIG env var
+  if [[ -n "${GH_CODA_CONFIG:-}" ]]; then
+    if [[ -f "$GH_CODA_CONFIG" ]]; then
+      printf '%s\n' "$GH_CODA_CONFIG"
+      return 0
+    else
+      die "GH_CODA_CONFIG file not found: $GH_CODA_CONFIG"
+    fi
+  fi
+
+  # Priority 3: $PWD/.github/coda.yml or coda.yaml (repo-level config)
+  if [[ -f "$PWD/.github/coda.yml" ]]; then
+    printf '%s\n' "$PWD/.github/coda.yml"
+    return 0
+  fi
+  if [[ -f "$PWD/.github/coda.yaml" ]]; then
+    printf '%s\n' "$PWD/.github/coda.yaml"
+    return 0
+  fi
+
+  # For priority 4 & 5, we need to know repo visibility
+  visibility="$(get_repo_visibility 2>/dev/null || echo "")"
+
+  # Priority 4: Walk up from $PWD for [.]coda.private.yml/yaml or [.]coda.public.yml/yaml
+  # Checks both dotted (.coda.private.yml) and non-dotted (coda.private.yml) variants
+  if [[ -n "$visibility" ]]; then
+    local dir="$PWD"
+
+    while [[ "$dir" != "/" ]]; do
+      # Check dotted variants first (takes priority)
+      if [[ -f "$dir/.coda.$visibility.yml" ]]; then
+        printf '%s\n' "$dir/.coda.$visibility.yml"
+        return 0
+      fi
+      if [[ -f "$dir/.coda.$visibility.yaml" ]]; then
+        printf '%s\n' "$dir/.coda.$visibility.yaml"
+        return 0
+      fi
+      # Then non-dotted variants
+      if [[ -f "$dir/coda.$visibility.yml" ]]; then
+        printf '%s\n' "$dir/coda.$visibility.yml"
+        return 0
+      fi
+      if [[ -f "$dir/coda.$visibility.yaml" ]]; then
+        printf '%s\n' "$dir/coda.$visibility.yaml"
+        return 0
+      fi
+      dir="$(dirname "$dir")"
+    done
+
+    # Check root (both variants)
+    if [[ -f "/.coda.$visibility.yml" ]]; then
+      printf '%s\n' "/.coda.$visibility.yml"
+      return 0
+    fi
+    if [[ -f "/.coda.$visibility.yaml" ]]; then
+      printf '%s\n' "/.coda.$visibility.yaml"
+      return 0
+    fi
+    if [[ -f "/coda.$visibility.yml" ]]; then
+      printf '%s\n' "/coda.$visibility.yml"
+      return 0
+    fi
+    if [[ -f "/coda.$visibility.yaml" ]]; then
+      printf '%s\n' "/coda.$visibility.yaml"
+      return 0
+    fi
+
+    # Priority 5: ~/.config/gh-coda/private.yml/yaml or public.yml/yaml
+    if [[ -f "$HOME/.config/gh-coda/$visibility.yml" ]]; then
+      printf '%s\n' "$HOME/.config/gh-coda/$visibility.yml"
+      return 0
+    fi
+    if [[ -f "$HOME/.config/gh-coda/$visibility.yaml" ]]; then
+      printf '%s\n' "$HOME/.config/gh-coda/$visibility.yaml"
+      return 0
+    fi
+  fi
+
+  # No config found
+  return 1
+}
+
+# Global to hold parsed config
+CONFIG_JSON=""
+
+# load_config <path>
+# Converts YAML to JSON and stores in CONFIG_JSON global
+load_config() {
+  local path="$1"
+  [[ -f "$path" ]] || die "config file not found: $path"
+  CONFIG_JSON="$(yj < "$path")" || die "failed to parse config: $path"
+}
+
+# config_get <key> [default]
+# Gets a value from CONFIG_JSON
+config_get() {
+  local key="$1" default="${2:-}"
+  local val
+  val="$(printf '%s' "$CONFIG_JSON" | jq -r ".$key // empty")"
+  if [[ -z "$val" ]]; then
+    printf '%s' "$default"
+  else
+    printf '%s' "$val"
+  fi
+}
+
+# config_bool <key>
+# Returns 0 if key is true, 1 otherwise
+config_bool() {
+  local key="$1"
+  local val
+  val="$(printf '%s' "$CONFIG_JSON" | jq -r ".$key // false")"
+  [[ "$val" == "true" ]]
+}
+
+# config_has <key>
+# Returns 0 if key exists in config
+config_has() {
+  local key="$1"
+  printf '%s' "$CONFIG_JSON" | jq -e "has(\"$key\")" >/dev/null 2>&1
+}
+
+# settings.sh - Apply repo settings
+# shellcheck disable=SC2154
+# CONFIG_JSON is set by load_config() in config.sh (files are concatenated at build)
+
+# apply_branch_protection <repo>
+# Applies branch protection rules from config
+apply_branch_protection() {
+  local repo="$1"
+
+  # Check if branches config exists
+  if ! printf '%s' "$CONFIG_JSON" | jq -e '.branches' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local branches
+  branches="$(printf '%s' "$CONFIG_JSON" | jq -r '.branches | keys[]')"
+
+  for branch in $branches; do
+    log "configuring branch protection for: $branch"
+
+    local branch_config
+    branch_config="$(printf '%s' "$CONFIG_JSON" | jq -c ".branches[\"$branch\"]")"
+
+    # Build the protection payload
+    local payload='{}'
+
+    # Required status checks
+    if printf '%s' "$branch_config" | jq -e '.required_status_checks' >/dev/null 2>&1; then
+      local strict checks_array
+      strict="$(printf '%s' "$branch_config" | jq -r '.required_status_checks.strict // false')"
+
+      # Build contexts array from checks
+      if printf '%s' "$branch_config" | jq -e '.required_status_checks.checks' >/dev/null 2>&1; then
+        checks_array="$(printf '%s' "$branch_config" | jq -c '[.required_status_checks.checks[] | .context]')"
+      else
+        checks_array='[]'
+      fi
+
+      payload="$(printf '%s' "$payload" | jq -c --argjson strict "$strict" --argjson contexts "$checks_array" '.required_status_checks = {strict: $strict, contexts: $contexts}')"
+    else
+      payload="$(printf '%s' "$payload" | jq -c '.required_status_checks = null')"
+    fi
+
+    # Required pull request reviews
+    if printf '%s' "$branch_config" | jq -e '.required_reviews' >/dev/null 2>&1; then
+      local reviews_obj='{}'
+      local count dismiss_stale code_owners
+
+      count="$(printf '%s' "$branch_config" | jq -r '.required_reviews.count // 0')"
+      dismiss_stale="$(printf '%s' "$branch_config" | jq -r '.required_reviews.dismiss_stale // false')"
+      code_owners="$(printf '%s' "$branch_config" | jq -r '.required_reviews.require_code_owners // false')"
+
+      reviews_obj="$(printf '%s' "$reviews_obj" | jq -c \
+        --argjson count "$count" \
+        --argjson dismiss "$dismiss_stale" \
+        --argjson owners "$code_owners" \
+        '.required_approving_review_count = $count | .dismiss_stale_reviews = $dismiss | .require_code_owner_reviews = $owners')"
+
+      payload="$(printf '%s' "$payload" | jq -c --argjson reviews "$reviews_obj" '.required_pull_request_reviews = $reviews')"
+    else
+      # Default: no reviews required
+      payload="$(printf '%s' "$payload" | jq -c '.required_pull_request_reviews = {required_approving_review_count: 0}')"
+    fi
+
+    # Enforce admins
+    local enforce_admins
+    enforce_admins="$(printf '%s' "$branch_config" | jq -r '.enforce_admins // false')"
+    payload="$(printf '%s' "$payload" | jq -c --argjson val "$enforce_admins" '.enforce_admins = $val')"
+
+    # Restrictions (who can push) - null means no restrictions
+    if printf '%s' "$branch_config" | jq -e '.restrictions' >/dev/null 2>&1; then
+      local restrictions
+      restrictions="$(printf '%s' "$branch_config" | jq -c '.restrictions')"
+      payload="$(printf '%s' "$payload" | jq -c --argjson val "$restrictions" '.restrictions = $val')"
+    else
+      payload="$(printf '%s' "$payload" | jq -c '.restrictions = null')"
+    fi
+
+    # Boolean flags with defaults
+    local allow_force allow_delete linear_history
+    allow_force="$(printf '%s' "$branch_config" | jq -r '.allow_force_pushes // false')"
+    allow_delete="$(printf '%s' "$branch_config" | jq -r '.allow_deletions // false')"
+    linear_history="$(printf '%s' "$branch_config" | jq -r '.required_linear_history // false')"
+
+    payload="$(printf '%s' "$payload" | jq -c \
+      --argjson force "$allow_force" \
+      --argjson delete "$allow_delete" \
+      --argjson linear "$linear_history" \
+      '.allow_force_pushes = $force | .allow_deletions = $delete | .required_linear_history = $linear')"
+
+    # Additional options
+    local conversation_resolution lock_branch allow_fork_syncing
+    conversation_resolution="$(printf '%s' "$branch_config" | jq -r '.required_conversation_resolution // false')"
+    lock_branch="$(printf '%s' "$branch_config" | jq -r '.lock_branch // false')"
+    allow_fork_syncing="$(printf '%s' "$branch_config" | jq -r '.allow_fork_syncing // false')"
+
+    payload="$(printf '%s' "$payload" | jq -c \
+      --argjson conv "$conversation_resolution" \
+      --argjson lock "$lock_branch" \
+      --argjson fork "$allow_fork_syncing" \
+      '.required_conversation_resolution = $conv | .lock_branch = $lock | .allow_fork_syncing = $fork')"
+
+    # Apply the protection
+    printf '%s' "$payload" | gh api --method PUT "/repos/$repo/branches/$branch/protection" --input - >/dev/null 2>&1 \
+      || log "  warning: failed to set protection for $branch (branch may not exist or insufficient permissions)"
+  done
+}
+
+# apply_rulesets <repo>
+# Applies repository rulesets from config
+apply_rulesets() {
+  local repo="$1"
+
+  # Check if rulesets config exists
+  if ! printf '%s' "$CONFIG_JSON" | jq -e '.rulesets' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local rulesets
+  rulesets="$(printf '%s' "$CONFIG_JSON" | jq -c '.rulesets[]')"
+
+  echo "$rulesets" | while read -r ruleset_config; do
+    local name
+    name="$(printf '%s' "$ruleset_config" | jq -r '.name')"
+    [[ -n "$name" && "$name" != "null" ]] || continue
+
+    log "configuring ruleset: $name"
+
+    # Check if ruleset already exists
+    local existing_id
+    existing_id="$(gh api "/repos/$repo/rulesets" 2>/dev/null | jq -r ".[] | select(.name == \"$name\") | .id" || true)"
+
+    # Build the ruleset payload
+    local payload
+    payload="$(printf '%s' "$ruleset_config" | jq -c '{
+      name: .name,
+      target: (.target // "branch"),
+      enforcement: (.enforcement // "active"),
+      conditions: (.conditions // {ref_name: {include: ["~DEFAULT_BRANCH"], exclude: []}}),
+      rules: (.rules // [])
+    }')"
+
+    if [[ -n "$existing_id" && "$existing_id" != "null" ]]; then
+      # Update existing ruleset
+      printf '%s' "$payload" | gh api --method PUT "/repos/$repo/rulesets/$existing_id" --input - >/dev/null 2>&1 \
+        || log "  warning: failed to update ruleset $name"
+    else
+      # Create new ruleset
+      printf '%s' "$payload" | gh api --method POST "/repos/$repo/rulesets" --input - >/dev/null 2>&1 \
+        || log "  warning: failed to create ruleset $name"
+    fi
+  done
+}
+
+# apply_environments <repo>
+# Configures deployment environments
+apply_environments() {
+  local repo="$1"
+
+  # Check if environments config exists
+  if ! printf '%s' "$CONFIG_JSON" | jq -e '.environments' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local env_names
+  env_names="$(printf '%s' "$CONFIG_JSON" | jq -r '.environments | keys[]')"
+
+  for env_name in $env_names; do
+    log "configuring environment: $env_name"
+
+    local env_config
+    env_config="$(printf '%s' "$CONFIG_JSON" | jq -c ".environments[\"$env_name\"]")"
+
+    # Build the environment payload
+    local payload='{}'
+
+    # Wait timer (delay before deployment)
+    local wait_timer
+    wait_timer="$(printf '%s' "$env_config" | jq -r '.wait_timer // 0')"
+    payload="$(printf '%s' "$payload" | jq -c --argjson val "$wait_timer" '.wait_timer = $val')"
+
+    # Reviewers
+    if printf '%s' "$env_config" | jq -e '.reviewers' >/dev/null 2>&1; then
+      local reviewers
+      reviewers="$(printf '%s' "$env_config" | jq -c '.reviewers')"
+      payload="$(printf '%s' "$payload" | jq -c --argjson val "$reviewers" '.reviewers = $val')"
+    fi
+
+    # Deployment branch policy
+    if printf '%s' "$env_config" | jq -e '.deployment_branch_policy' >/dev/null 2>&1; then
+      local policy
+      policy="$(printf '%s' "$env_config" | jq -c '.deployment_branch_policy')"
+      payload="$(printf '%s' "$payload" | jq -c --argjson val "$policy" '.deployment_branch_policy = $val')"
+    fi
+
+    # Apply the environment
+    printf '%s' "$payload" | gh api --method PUT "/repos/$repo/environments/$env_name" --input - >/dev/null 2>&1 \
+      || log "  warning: failed to configure environment $env_name"
+  done
+}
+
+# apply_pages <repo>
+# Configures GitHub Pages
+apply_pages() {
+  local repo="$1"
+
+  # Check if pages config exists
+  if ! printf '%s' "$CONFIG_JSON" | jq -e '.pages' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local pages_config
+  pages_config="$(printf '%s' "$CONFIG_JSON" | jq -c '.pages')"
+
+  # Check if pages should be enabled (use explicit check to handle false correctly)
+  local enabled
+  enabled="$(printf '%s' "$pages_config" | jq -r 'if has("enabled") then .enabled else true end')"
+
+  if [[ "$enabled" == "false" ]]; then
+    log "disabling GitHub Pages..."
+    gh api --method DELETE "/repos/$repo/pages" 2>/dev/null || true
+    return 0
+  fi
+
+  log "configuring GitHub Pages..."
+
+  # Build the pages payload
+  local payload='{}'
+
+  # Build type: workflow or legacy
+  local build_type
+  build_type="$(printf '%s' "$pages_config" | jq -r '.build_type // "workflow"')"
+  payload="$(printf '%s' "$payload" | jq -c --arg val "$build_type" '.build_type = $val')"
+
+  # Source branch and path (for legacy builds)
+  if [[ "$build_type" == "legacy" ]]; then
+    local branch path
+    branch="$(printf '%s' "$pages_config" | jq -r '.source.branch // "main"')"
+    path="$(printf '%s' "$pages_config" | jq -r '.source.path // "/"')"
+    payload="$(printf '%s' "$payload" | jq -c --arg branch "$branch" --arg path "$path" '.source = {branch: $branch, path: $path}')"
+  fi
+
+  # Check if pages is already enabled
+  if gh api "/repos/$repo/pages" >/dev/null 2>&1; then
+    # Update existing
+    printf '%s' "$payload" | gh api --method PUT "/repos/$repo/pages" --input - >/dev/null 2>&1 \
+      || log "  warning: failed to update GitHub Pages"
+  else
+    # Enable pages
+    printf '%s' "$payload" | gh api --method POST "/repos/$repo/pages" --input - >/dev/null 2>&1 \
+      || log "  warning: failed to enable GitHub Pages"
+  fi
+
+  # HTTPS enforcement
+  local https_enforced
+  https_enforced="$(printf '%s' "$pages_config" | jq -r '.https_enforced // true')"
+  if [[ "$https_enforced" == "true" ]]; then
+    gh api --method PUT "/repos/$repo/pages" -f https_enforced=true >/dev/null 2>&1 || true
+  fi
+
+  # Custom domain
+  local cname
+  cname="$(printf '%s' "$pages_config" | jq -r '.cname // empty')"
+  if [[ -n "$cname" ]]; then
+    gh api --method PUT "/repos/$repo/pages" -f cname="$cname" >/dev/null 2>&1 \
+      || log "  warning: failed to set custom domain"
+  fi
+}
+
+# apply_repo_edit_settings <repo>
+# Applies settings that can be set via `gh repo edit`
+apply_repo_edit_settings() {
+  local repo="$1"
+  local args=()
+
+  # Helper to add enable/disable flag
+  add_bool_flag() {
+    local config_key="$1" flag_name="$2"
+    if config_has "$config_key"; then
+      if config_bool "$config_key"; then
+        args+=("--enable-$flag_name")
+      else
+        args+=("--disable-$flag_name")
+      fi
+    fi
+  }
+
+  # Boolean settings with enable/disable flags
+  add_bool_flag auto_merge "auto-merge"
+  add_bool_flag allow_squash_merge "squash-merge"
+  add_bool_flag allow_merge_commit "merge-commit"
+  add_bool_flag allow_rebase_merge "rebase-merge"
+  add_bool_flag enable_discussions "discussions"
+  add_bool_flag enable_projects "projects"
+  add_bool_flag enable_wiki "wiki"
+  add_bool_flag enable_secret_scanning "secret-scanning"
+  add_bool_flag enable_secret_scanning_push_protection "secret-scanning-push-protection"
+
+  # Special case: delete_branch_on_merge uses different flag format
+  if config_has "delete_branch_on_merge"; then
+    if config_bool "delete_branch_on_merge"; then
+      args+=("--delete-branch-on-merge")
+    else
+      args+=("--delete-branch-on-merge=false")
+    fi
+  fi
+
+  if (( ${#args[@]} > 0 )); then
+    log "applying repo edit settings..."
+    gh repo edit "$repo" "${args[@]}"
+  fi
+}
+
+# apply_api_settings <repo>
+# Applies settings that require direct API calls
+apply_api_settings() {
+  local repo="$1"
+
+  # Dependabot vulnerability alerts
+  if config_has "dependabot_alerts"; then
+    if config_bool "dependabot_alerts"; then
+      log "enabling dependabot alerts..."
+      gh api --method PUT "/repos/$repo/vulnerability-alerts" 2>/dev/null || true
+    else
+      log "disabling dependabot alerts..."
+      gh api --method DELETE "/repos/$repo/vulnerability-alerts" 2>/dev/null || true
+    fi
+  fi
+
+  # Dependabot security updates (automated security fixes)
+  if config_has "dependabot_security_updates"; then
+    if config_bool "dependabot_security_updates"; then
+      log "enabling dependabot security updates..."
+      gh api --method PUT "/repos/$repo/automated-security-fixes" 2>/dev/null || true
+    else
+      log "disabling dependabot security updates..."
+      gh api --method DELETE "/repos/$repo/automated-security-fixes" 2>/dev/null || true
+    fi
+  fi
+}
+
+# secrets.sh - 1Password to GitHub secrets sync
+
+normalize_secret_name() {
+  local s="$1"
+  s="$(printf '%s' "$s" | tr '[:lower:]' '[:upper:]')"
+  s="$(printf '%s' "$s" | sed -E 's/[^A-Z0-9_]+/_/g; s/_+/_/g; s/^_+//; s/_+$//')"
+  printf '%s' "$s"
+}
+
+op_ensure_signed_in() {
+  if op whoami >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local accounts_json account_count acct
+  accounts_json="$(NO_COLOR=1 op account list --format json 2>/dev/null || true)"
+  account_count="$(printf '%s' "$accounts_json" | jq -r 'length' 2>/dev/null || echo 0)"
+
+  if [[ "$account_count" == "1" ]]; then
+    acct="$(printf '%s' "$accounts_json" | jq -r '.[0].shorthand // .[0].user_uuid // empty')"
+    [[ -n "$acct" ]] || die "op not signed in and couldn't determine account shorthand"
+    log "op: signing in (single account detected)..."
+    eval "$(op signin --account "$acct")"
+    op whoami >/dev/null 2>&1 || die "op signin failed"
+    return 0
+  fi
+
+  die "op is not signed in. Run: op signin, then re-run."
+}
+
+# cmd_set_secrets [--tags TAG,TAG] [NAME]
+cmd_set_secrets() {
+  need_cmd op
+  need_cmd jq
+
+  local tags_csv="" name="" repo="" app="actions" vault="" force_field="" dry_run="false" verbose="false"
+
+  # Get tags from config if available
+  if [[ -n "$CONFIG_JSON" ]]; then
+    tags_csv="$(config_get secrets_tags)"
+    app="$(config_get secrets_app actions)"
+  fi
+
+  # Parse args
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --tags) tags_csv="${2:-}"; shift 2 ;;
+      --app) app="${2:-}"; shift 2 ;;
+      --repo) repo="${2:-}"; shift 2 ;;
+      --vault) vault="${2:-}"; shift 2 ;;
+      --field) force_field="${2:-}"; shift 2 ;;
+      --dry-run) dry_run="true"; shift ;;
+      --verbose) verbose="true"; shift ;;
+      -c|--config) shift 2 ;;  # Skip config flag, handled elsewhere
+      -*)
+        die "unknown option: $1"
+        ;;
+      *)
+        name="$1"; shift
+        ;;
+    esac
+  done
+
+  [[ -n "$tags_csv" ]] || die "no tags specified (use --tags or set secrets_tags in config)"
+
+  # Resolve repo
+  [[ -n "$repo" ]] || repo="$(resolve_repo)"
+
+  op_ensure_signed_in
+
+  IFS=',' read -r -a tags <<< "$tags_csv"
+
+  if [[ "$verbose" == "true" ]]; then
+    log "tags: ${tags[*]}"
+    [[ -n "$name" ]] && log "name filter: $name"
+    log "repo target: $repo"
+  fi
+
+  # Build item list
+  local items_json
+  items_json="$(
+    for t in "${tags[@]}"; do
+      [[ -n "$t" ]] || continue
+      if [[ -n "$vault" ]]; then
+        NO_COLOR=1 op item list --tags "$t" --vault "$vault" --format json
+      else
+        NO_COLOR=1 op item list --tags "$t" --format json
+      fi
+    done | jq -s 'add | unique_by(.id)'
+  )"
+
+  # Filter by name if provided
+  if [[ -n "$name" ]]; then
+    local match_count
+    match_count="$(printf '%s' "$items_json" | jq -r --arg name "$name" '[.[] | select(.title == $name)] | length')"
+    [[ "$match_count" == "1" ]] || die "expected exactly 1 match for name '$name'; found $match_count"
+    items_json="$(printf '%s' "$items_json" | jq -c --arg name "$name" '[.[] | select(.title == $name)]')"
+  fi
+
+  local count
+  count="$(printf '%s' "$items_json" | jq -r 'length')"
+  [[ "$count" != "0" ]] || die "no 1Password items found for tag(s): $tags_csv"
+
+  # jq program to extract secret value
+  local JQ_EXTRACT JQ_FORCED_FIELD
+  read -r -d '' JQ_EXTRACT <<'JQ' || true
+def all_fields:
+  [.. | objects | select(has("label") and has("value")) | {label: .label, value: .value, purpose: (.purpose // ""), type: (.type // .fieldType // "")}];
+
+def field_by_label($lbl):
+  (all_fields | map(select(.label == $lbl)) | .[0].value) // empty;
+
+def best_value:
+  field_by_label("credential")
+  // field_by_label("password")
+  // field_by_label("token")
+  // (all_fields | map(select(.purpose == "PASSWORD")) | .[0].value // empty)
+  // (all_fields | map(select((.type|tostring) == "CONCEALED")) | .[0].value // empty)
+  // (all_fields | .[0].value // empty);
+
+{
+  secret_name_override: (field_by_label("gh_secret_name") // empty),
+  secret_value: best_value
+}
+JQ
+
+  read -r -d '' JQ_FORCED_FIELD <<'JQ' || true
+def all_fields:
+  [.. | objects | select(has("label") and has("value")) | {label: .label, value: .value}];
+def field_by_label($lbl):
+  (all_fields | map(select(.label == $lbl)) | .[0].value) // empty;
+{
+  secret_name_override: (field_by_label("gh_secret_name") // empty),
+  secret_value: field_by_label($field)
+}
+JQ
+
+  local gh_target_args=(--repo "$repo" --app "$app")
+  local secrets_set=0
+
+  printf '%s' "$items_json" | jq -c '.[]' | while read -r item; do
+    local item_id item_title default_secret_name
+    item_id="$(printf '%s' "$item" | jq -r '.id')"
+    item_title="$(printf '%s' "$item" | jq -r '.title')"
+    default_secret_name="$(normalize_secret_name "$item_title")"
+
+    if [[ "$dry_run" == "true" ]]; then
+      log "would set: $default_secret_name (from item: $item_title)"
+      continue
+    fi
+
+    [[ "$verbose" == "true" ]] && log "fetching item: $item_title ($item_id)"
+
+    local extracted
+    if [[ -n "$force_field" ]]; then
+      extracted="$(NO_COLOR=1 op item get "$item_id" --format json | jq -r --arg field "$force_field" "$JQ_FORCED_FIELD")"
+    else
+      extracted="$(NO_COLOR=1 op item get "$item_id" --format json | jq -r "$JQ_EXTRACT")"
+    fi
+
+    local secret_name_override secret_value secret_name
+    secret_name_override="$(printf '%s' "$extracted" | jq -r '.secret_name_override // empty')"
+    secret_value="$(printf '%s' "$extracted" | jq -r '.secret_value // empty')"
+
+    secret_name="$default_secret_name"
+    [[ -n "$secret_name_override" ]] && secret_name="$(normalize_secret_name "$secret_name_override")"
+
+    [[ -n "$secret_value" ]] || die "no secret value found in item '$item_title' (use --field to force a label)"
+
+    [[ "$verbose" == "true" ]] && log "setting secret: $secret_name (item: $item_title)"
+
+    printf '%s' "$secret_value" | gh secret set "$secret_name" "${gh_target_args[@]}"
+    (( secrets_set++ )) || true
+  done
+
+  log "done. set $count secret(s)."
+}
+
+# commands.sh - Subcommands and main entry point
+# shellcheck disable=SC2154
+# CONFIG_JSON is set by load_config() in config.sh (files are concatenated at build)
+
+# Version (replaced during build)
+VERSION="0.1.1"
+
+# Default config template
+DEFAULT_CONFIG='# gh-coda config
+# See: https://github.com/claylo/gh-coda
+
+# Merge settings
+auto_merge: true
+delete_branch_on_merge: true
+allow_squash_merge: true
+allow_merge_commit: false
+allow_rebase_merge: true
+
+# Features
+enable_discussions: false
+enable_projects: false
+enable_wiki: false
+
+# Security
+enable_secret_scanning: true
+enable_secret_scanning_push_protection: true
+dependabot_alerts: true
+dependabot_security_updates: true
+
+# 1Password secrets sync (optional)
+# secrets_tags: github-actions
+# secrets_app: actions
+'
+
+cmd_init() {
+  local config_path="" output_path="$PWD/.github/coda.yml" force="false"
+
+  # Parse args
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -c|--config) config_path="${2:-}"; shift 2 ;;
+      -o|--output) output_path="${2:-}"; shift 2 ;;
+      -f|--force) force="true"; shift ;;
+      -*)
+        die "unknown option: $1"
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  # Check if output already exists
+  if [[ -f "$output_path" && "$force" != "true" ]]; then
+    die "config already exists: $output_path (use --force to overwrite)"
+  fi
+
+  # If no config specified, try to find one (but not the output path itself)
+  if [[ -z "$config_path" ]]; then
+    config_path="$(find_config 2>/dev/null || true)"
+    # Don't copy a file to itself
+    if [[ -n "$config_path" ]]; then
+      local real_config real_output
+      real_config="$(cd "$(dirname "$config_path")" && pwd)/$(basename "$config_path")"
+      real_output="$(cd "$(dirname "$output_path")" 2>/dev/null && pwd)/$(basename "$output_path")" 2>/dev/null || real_output="$output_path"
+      [[ "$real_config" == "$real_output" ]] && config_path=""
+    fi
+  fi
+
+  # Ensure parent directory exists (e.g., .github/)
+  local output_dir
+  output_dir="$(dirname "$output_path")"
+  [[ -d "$output_dir" ]] || mkdir -p "$output_dir"
+
+  if [[ -n "$config_path" && -f "$config_path" ]]; then
+    # Copy existing config
+    cp "$config_path" "$output_path"
+    log "copied $config_path -> $output_path"
+  else
+    # Write default config
+    printf '%s' "$DEFAULT_CONFIG" > "$output_path"
+    log "created $output_path with defaults"
+  fi
+
+  log ""
+  log "edit $output_path to customize, then run: gh coda"
+}
+
+cmd_status() {
+  local repo="" config_path
+
+  # Parse --repo flag
+  local args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -R|--repo) repo="${2:-}"; shift 2 ;;
+      *) args+=("$1"); shift ;;
+    esac
+  done
+  set -- ${args[@]+"${args[@]}"}
+
+  [[ -n "$repo" ]] || repo="$(resolve_repo)"
+  config_path="$(find_config "$@" || true)"
+
+  log "repo: $repo"
+  log "visibility: $(get_repo_visibility "$repo")"
+
+  if [[ -z "$config_path" ]]; then
+    log "config: (none found)"
+    return 0
+  fi
+
+  log "config: $config_path"
+  need_cmd yj
+  load_config "$config_path"
+
+  log ""
+  log "configured settings:"
+  printf '%s' "$CONFIG_JSON" | jq -r 'to_entries[] | "  \(.key): \(.value)"'
+}
+
+cmd_setup() {
+  need_cmd yj
+  need_cmd jq
+  need_cmd gh
+
+  local repo="" config_path
+
+  # Parse --repo flag, pass rest to find_config
+  local args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -R|--repo) repo="${2:-}"; shift 2 ;;
+      *) args+=("$1"); shift ;;
+    esac
+  done
+  set -- ${args[@]+"${args[@]}"}
+
+  config_path="$(find_config "$@")" || die "no config file found"
+
+  [[ -n "$repo" ]] || repo="$(resolve_repo)"
+  log "repo: $repo"
+  log "config: $config_path"
+
+  load_config "$config_path"
+
+  apply_repo_edit_settings "$repo"
+  apply_api_settings "$repo"
+  apply_branch_protection "$repo"
+  apply_rulesets "$repo"
+  apply_environments "$repo"
+  apply_pages "$repo"
+
+  # Run set-secrets if secrets_tags is configured
+  if config_has "secrets_tags"; then
+    cmd_set_secrets --repo "$repo" "$@"
+  fi
+
+  log "setup complete."
+}
+
+usage() {
+  cat <<'EOF'
+gh coda: one more thing... for repositories
+
+Usage:
+  gh coda [SUBCOMMAND] [OPTIONS]
+
+Subcommands:
+  setup        Apply all settings from config (default)
+  init         Create a .github/coda.yml config file
+  set-secrets  Sync secrets from 1Password to GitHub
+  status       Show current repo settings vs. config
+
+Options:
+  -R, --repo <owner/repo>   Target repository (default: current repo)
+  -c, --config <path>       Path to config file (overrides discovery)
+  -h, --help                Show this help
+  -v, --version             Show version
+
+Config Discovery (in priority order):
+  1. -c/--config flag
+  2. GH_CODA_CONFIG environment variable
+  3. .github/coda.yml or .github/coda.yaml
+  4. Walk up from $PWD for [.]coda.private.yml or [.]coda.public.yml
+  5. ~/.config/gh-coda/private.yml or public.yml
+
+Config Format (YAML):
+  auto_merge: true
+  delete_branch_on_merge: true
+  enable_discussions: true
+  dependabot_alerts: true
+  secrets_tags: github-actions,release
+
+EOF
+}
+
+main() {
+  case "${1:-}" in
+    setup)
+      shift
+      cmd_setup "$@"
+      ;;
+    init)
+      shift
+      cmd_init "$@"
+      ;;
+    set-secrets)
+      shift
+      cmd_set_secrets "$@"
+      ;;
+    status)
+      shift
+      cmd_status "$@"
+      ;;
+    -h|--help|help)
+      usage
+      ;;
+    -v|--version|version)
+      echo "gh-coda $VERSION"
+      ;;
+    -*)
+      # Flag passed directly, assume setup
+      cmd_setup "$@"
+      ;;
+    "")
+      # No args, run setup
+      cmd_setup "$@"
+      ;;
+    *)
+      die "unknown command: $1 (try 'gh coda --help')"
+      ;;
+  esac
+}
+
+main "$@"
