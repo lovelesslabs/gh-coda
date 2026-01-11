@@ -2,7 +2,7 @@
 set -e
 
 # gh-coda - built from lib/*.sh
-# Version: 0.1.1
+# Version: 0.1.3
 # Do not edit directly; modify lib/*.sh and run: just build
 
 # helpers.sh - Basic utility functions
@@ -495,7 +495,8 @@ apply_repo_edit_settings() {
       if config_bool "$config_key"; then
         args+=("--enable-$flag_name")
       else
-        args+=("--disable-$flag_name")
+        # disable equivalent
+        args+=("--enable-${flag_name}=false")
       fi
     fi
   }
@@ -737,11 +738,11 @@ JQ
 # CONFIG_JSON is set by load_config() in config.sh (files are concatenated at build)
 
 # Version (replaced during build)
-VERSION="0.1.1"
+VERSION="0.1.3"
 
 # Default config template
 DEFAULT_CONFIG='# gh-coda config
-# See: https://github.com/claylo/gh-coda
+# See: https://github.com/lovelesslabs/gh-coda
 
 # Merge settings
 auto_merge: true
