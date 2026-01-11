@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.1.4](https://github.com/lovelesslabs/gh-coda/compare/cc4498435060f4c722a2beba9b42220f13937596..v0.1.4) - 2026-01-11
+#### Bug Fixes
+- use correct release token (#13) - ([cc44984](https://github.com/lovelesslabs/gh-coda/commit/cc4498435060f4c722a2beba9b42220f13937596)) - Clay Loveless
+
+- - -
+
 ## [v0.1.3](https://github.com/lovelesslabs/gh-coda/compare/17478886eda5fcfdfaac9f56d177fca7f234a255..v0.1.3) - 2026-01-11
 #### Bug Fixes
 - cog config and usage (#12) - ([1747888](https://github.com/lovelesslabs/gh-coda/commit/17478886eda5fcfdfaac9f56d177fca7f234a255)) - Clay Loveless
