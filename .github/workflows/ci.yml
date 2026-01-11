@@ -74,7 +74,7 @@ jobs:
         run: |
           if cog bump --auto --dry-run 2>/dev/null; then
             echo "Releasable commits found, bumping..."
-            cog bump --auto
+            cog bump --auto --skip-ci
           else
             echo "No releasable commits since last tag, skipping release"
           fi
