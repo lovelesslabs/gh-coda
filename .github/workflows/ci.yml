@@ -43,6 +43,9 @@ jobs:
   commits:
     name: Conventional Commits
     runs-on: ubuntu-latest
+    # Only check commits on PRs - ensures new commits comply before merge
+    # Skip on main push to avoid re-checking legacy non-compliant commits
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -55,7 +58,7 @@ jobs:
 
   release:
     name: Auto Release
-    needs: [test, shellcheck, commits] # only after all tests pass
+    needs: [test, shellcheck] # commits check runs on PRs only
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -74,7 +77,7 @@ jobs:
         run: |
           if cog bump --auto --dry-run 2>/dev/null; then
             echo "Releasable commits found, bumping..."
-            cog bump --auto --skip-ci
+            cog bump --auto
           else
             echo "No releasable commits since last tag, skipping release"
           fi
