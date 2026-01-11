@@ -74,6 +74,8 @@ Describe 'Commands'
     End
 
     It 'routes to status subcommand'
+      cd "$TEST_TMPDIR"
+      unset GH_CODA_CONFIG
       When call main status
       The status should be success
       The stderr should include "repo:"
@@ -260,6 +262,9 @@ Describe 'Commands'
     setup() {
       load_all_with_mocks
       export GH_REPO="testowner/testrepo"
+      # Isolate from real config files in project directory
+      cd "$TEST_TMPDIR"
+      unset GH_CODA_CONFIG
     }
 
     BeforeEach 'setup'
@@ -306,8 +311,6 @@ Describe 'Commands'
     End
 
     It 'displays (none found) when no config exists'
-      cd "$TEST_TMPDIR"
-      unset GH_CODA_CONFIG
       When call cmd_status
       The status should be success
       The stderr should include "none found"

@@ -280,7 +280,8 @@ apply_repo_edit_settings() {
       if config_bool "$config_key"; then
         args+=("--enable-$flag_name")
       else
-        args+=("--disable-$flag_name")
+        # disable equivalent
+        args+=("--enable-${flag_name}=false")
       fi
     fi
   }

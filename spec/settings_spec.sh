@@ -19,12 +19,12 @@ Describe 'Settings application'
       The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "--enable-auto-merge"
     End
 
-    It 'calls gh repo edit with --disable-auto-merge when auto_merge is false'
+    It 'calls gh repo edit with --enable-auto-merge=false when auto_merge is false'
       CONFIG_JSON='{"auto_merge":false}'
       When call apply_repo_edit_settings "owner/repo"
       The status should be success
       The stderr should include "applying"
-      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "--disable-auto-merge"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "--enable-auto-merge=false"
     End
 
     It 'calls gh repo edit with --delete-branch-on-merge when delete_branch_on_merge is true'
@@ -50,7 +50,7 @@ Describe 'Settings application'
       The stderr should include "applying"
       The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "--enable-auto-merge"
       The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "--enable-discussions"
-      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "--disable-wiki"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "--enable-wiki=false"
     End
 
     It 'does nothing when no settings are configured'
