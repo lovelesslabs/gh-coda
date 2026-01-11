@@ -62,8 +62,8 @@ pre_bump_hooks = [
     # "just test",
     # Rebuild with new version
     "just build",
-    # Stage the VERSION file (gh-coda is gitignored)
-    "git add VERSION",
+    # Stage VERSION and built script (gh-coda must be in repo for gh ext install)
+    "git add VERSION gh-coda",
 ]
 
 # Post-bump hooks run after the tag is created
