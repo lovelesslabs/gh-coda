@@ -9,6 +9,12 @@ VERSION="@@VERSION@@"
 DEFAULT_CONFIG='# gh-coda config
 # See: https://github.com/lovelesslabs/gh-coda
 
+# Repo metadata
+# description: My awesome project
+# topics:
+#   - cli
+#   - github
+
 # Merge settings
 auto_merge: true
 delete_branch_on_merge: true
@@ -26,6 +32,11 @@ enable_secret_scanning: true
 enable_secret_scanning_push_protection: true
 dependabot_alerts: true
 dependabot_security_updates: true
+
+# GitHub Actions variables (optional)
+# variables:
+#   NODE_ENV: production
+#   API_URL: https://api.example.com
 
 # 1Password secrets sync (optional)
 # secrets_tags: github-actions
@@ -146,6 +157,8 @@ cmd_setup() {
 
   apply_repo_edit_settings "$repo"
   apply_api_settings "$repo"
+  apply_topics "$repo"
+  apply_variables "$repo"
   apply_branch_protection "$repo"
   apply_rulesets "$repo"
   apply_environments "$repo"
@@ -186,10 +199,13 @@ Config Discovery (in priority order):
   5. ~/.config/gh-coda/private.yml or public.yml
 
 Config Format (YAML):
+  description: My awesome project
+  topics: [cli, github]
   auto_merge: true
   delete_branch_on_merge: true
   enable_discussions: true
   dependabot_alerts: true
+  variables: {NODE_ENV: production}
   secrets_tags: github-actions,release
 
 EOF
