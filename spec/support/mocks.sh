@@ -61,6 +61,14 @@ mock_gh() {
           ;;
       esac
       ;;
+    variable)
+      case "$2" in
+        set)
+          # Record the variable set call
+          echo "gh variable set $*" >> "${TEST_TMPDIR:-/tmp}/gh_calls.log"
+          ;;
+      esac
+      ;;
     api)
       # Record API calls with any stdin input
       local input=""

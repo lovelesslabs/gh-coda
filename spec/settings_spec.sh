@@ -60,6 +60,15 @@ Describe 'Settings application'
       The path "${TEST_TMPDIR}/gh_calls.log" should not be exist
     End
 
+    It 'sets description via --description flag'
+      CONFIG_JSON='{"description":"My awesome project"}'
+      When call apply_repo_edit_settings "owner/repo"
+      The status should be success
+      The stderr should include "applying"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "--description"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "My awesome project"
+    End
+
     It 'handles secret scanning settings'
       CONFIG_JSON='{"enable_secret_scanning":true,"enable_secret_scanning_push_protection":true}'
       When call apply_repo_edit_settings "owner/repo"
@@ -264,6 +273,60 @@ Describe 'Settings application'
       The status should be success
       The stderr should include "configuring GitHub Pages"
       The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "source"
+    End
+  End
+
+  Describe 'apply_topics()'
+    It 'does nothing when no topics config exists'
+      CONFIG_JSON='{}'
+      When call apply_topics "owner/repo"
+      The status should be success
+      The path "${TEST_TMPDIR}/gh_calls.log" should not be exist
+    End
+
+    It 'calls API to set topics'
+      CONFIG_JSON='{"topics":["cli","github","bash"]}'
+      When call apply_topics "owner/repo"
+      The status should be success
+      The stderr should include "setting repository topics"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "/repos/owner/repo/topics"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "--method PUT"
+    End
+
+    It 'includes topic names in payload'
+      CONFIG_JSON='{"topics":["my-tool","automation"]}'
+      When call apply_topics "owner/repo"
+      The status should be success
+      The stderr should include "setting repository topics"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "my-tool"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "automation"
+    End
+  End
+
+  Describe 'apply_variables()'
+    It 'does nothing when no variables config exists'
+      CONFIG_JSON='{}'
+      When call apply_variables "owner/repo"
+      The status should be success
+      The path "${TEST_TMPDIR}/gh_calls.log" should not be exist
+    End
+
+    It 'calls gh variable set for each variable'
+      CONFIG_JSON='{"variables":{"NODE_ENV":"production","API_URL":"https://api.example.com"}}'
+      When call apply_variables "owner/repo"
+      The status should be success
+      The stderr should include "setting repository variables"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "variable set"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "NODE_ENV"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "API_URL"
+    End
+
+    It 'passes --repo flag'
+      CONFIG_JSON='{"variables":{"FOO":"bar"}}'
+      When call apply_variables "owner/repo"
+      The status should be success
+      The stderr should include "setting repository variables"
+      The contents of file "${TEST_TMPDIR}/gh_calls.log" should include "--repo owner/repo"
     End
   End
 End

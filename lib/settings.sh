@@ -297,6 +297,15 @@ apply_repo_edit_settings() {
   add_bool_flag enable_secret_scanning "secret-scanning"
   add_bool_flag enable_secret_scanning_push_protection "secret-scanning-push-protection"
 
+  # Description (string value, not boolean)
+  if config_has "description"; then
+    local desc
+    desc="$(config_get description)"
+    if [[ -n "$desc" ]]; then
+      args+=("--description" "$desc")
+    fi
+  fi
+
   # Special case: delete_branch_on_merge uses different flag format
   if config_has "delete_branch_on_merge"; then
     if config_bool "delete_branch_on_merge"; then
@@ -338,4 +347,44 @@ apply_api_settings() {
       gh api --method DELETE "/repos/$repo/automated-security-fixes" 2>/dev/null || true
     fi
   fi
+}
+
+# apply_topics <repo>
+# Sets repository topics (replaces all topics atomically)
+apply_topics() {
+  local repo="$1"
+
+  if ! printf '%s' "$CONFIG_JSON" | jq -e '.topics' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  log "setting repository topics..."
+
+  local payload
+  payload="$(printf '%s' "$CONFIG_JSON" | jq -c '{names: [.topics[] | tostring]}')"
+
+  printf '%s' "$payload" | gh api --method PUT "/repos/$repo/topics" --input - >/dev/null 2>&1 \
+    || log "  warning: failed to set repository topics"
+}
+
+# apply_variables <repo>
+# Sets GitHub Actions variables from config
+apply_variables() {
+  local repo="$1"
+
+  if ! printf '%s' "$CONFIG_JSON" | jq -e '.variables' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  log "setting repository variables..."
+
+  local keys
+  keys="$(printf '%s' "$CONFIG_JSON" | jq -r '.variables | keys[]')"
+
+  for key in $keys; do
+    local value
+    value="$(printf '%s' "$CONFIG_JSON" | jq -r ".variables[\"$key\"] | tostring")"
+    gh variable set "$key" --body "$value" --repo "$repo" >/dev/null 2>&1 \
+      || log "  warning: failed to set variable $key"
+  done
 }
