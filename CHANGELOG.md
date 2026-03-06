@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.2.0](https://github.com/lovelesslabs/gh-coda/compare/944c68ea269e522531424507fa025f2692924d92..v0.2.0) - 2026-03-06
+#### Features
+- add description, topics, and variables support (#14) - ([944c68e](https://github.com/lovelesslabs/gh-coda/commit/944c68ea269e522531424507fa025f2692924d92)) - Clay Loveless
+
+- - -
+
 ## [v0.1.4](https://github.com/lovelesslabs/gh-coda/compare/cc4498435060f4c722a2beba9b42220f13937596..v0.1.4) - 2026-01-11
 #### Bug Fixes
 - use correct release token (#13) - ([cc44984](https://github.com/lovelesslabs/gh-coda/commit/cc4498435060f4c722a2beba9b42220f13937596)) - Clay Loveless
