@@ -22,6 +22,10 @@ gh ext install lovelesslabs/gh-coda
 
 ```yaml
 # .github/coda.yml (repo-level) or ~/.config/gh-coda/public.yml (user-level)
+description: "My awesome project"
+topics:
+  - cli
+  - github
 auto_merge: true
 delete_branch_on_merge: true
 allow_squash_merge: true
@@ -29,6 +33,8 @@ allow_merge_commit: false
 enable_discussions: true
 enable_secret_scanning: true
 dependabot_alerts: true
+variables:
+  NODE_ENV: production
 ```
 
 2. Run it:
@@ -84,7 +90,9 @@ This layered approach lets you have different defaults for:
 
 | Feature | Required Scope | Notes |
 |---------|---------------|-------|
-| Repo settings (`gh repo edit`) | `repo` | All merge, wiki, project, discussion settings |
+| Repo settings (`gh repo edit`) | `repo` | Description, merge, wiki, project, discussion settings |
+| Topics | `repo` | Replaces all topics atomically via API |
+| Variables | `repo` | GitHub Actions repository variables |
 | Secret scanning | `repo` | Free for public repos; requires [GitHub Advanced Security](https://docs.github.com/en/get-started/learning-about-github/about-github-advanced-security) for private repos |
 | Dependabot alerts | `repo`, `security_events` | Requires repo admin; via API |
 | Dependabot security updates | `repo`, `security_events` | Requires repo admin; via API |
@@ -127,6 +135,7 @@ gh auth login --scopes repo,security_events,admin:org
 
 | Config Key | Description |
 |------------|-------------|
+| `description` | Repository description (string) |
 | `auto_merge` | Enable/disable auto-merge for PRs |
 | `delete_branch_on_merge` | Delete head branch after merge |
 | `allow_squash_merge` | Allow squash merging |
@@ -144,6 +153,27 @@ gh auth login --scopes repo,security_events,admin:org
 |------------|-------------|
 | `dependabot_alerts` | Enable Dependabot vulnerability alerts |
 | `dependabot_security_updates` | Enable Dependabot security updates |
+
+### Topics
+
+Set repository topics declaratively. Topics are replaced atomically -- what's in config is what you get on the repo.
+
+```yaml
+topics:
+  - github-cli
+  - automation
+  - devops
+```
+
+### Variables
+
+Set GitHub Actions repository variables. Variables are additive (create or update) -- `gh-coda` never deletes variables not in config, matching the behavior of secrets.
+
+```yaml
+variables:
+  NODE_ENV: production
+  DEPLOY_REGION: us-east-1
+```
 
 ### Branch Protection & Rulesets
 
